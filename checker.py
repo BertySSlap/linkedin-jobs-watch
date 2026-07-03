@@ -31,8 +31,8 @@ def http_get(url):
         return r.read().decode("utf-8", "replace")
 
 
-def notify(topic, title, body, click=None):
-    headers = {"Title": title, "Priority": "high", "Tags": "briefcase"}
+def notify(topic, title, body, click=None, priority="urgent"):
+    headers = {"Title": title, "Priority": priority, "Tags": "briefcase"}
     if click:
         headers["Click"] = click
     req = urllib.request.Request(
@@ -86,7 +86,8 @@ def main():
         if etat["echecs"] == SEUIL_ALERTE_ECHECS:
             notify(topic, "Veille LinkedIn en panne",
                    "%d verifications consecutives ont echoue. "
-                   "Voir les logs GitHub Actions." % etat["echecs"])
+                   "Voir les logs GitHub Actions." % etat["echecs"],
+                   priority="default")
         sauve(etat)
         return 0
 
