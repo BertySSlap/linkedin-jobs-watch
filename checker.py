@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Surveille les offres d'emploi publiees par une entreprise sur LinkedIn
-(API publique invitee) et pousse une notification ntfy.sh pour chaque
-nouvelle offre detectee.
+"""Surveille les offres d'emploi publiees par une ou plusieurs entreprises
+sur LinkedIn (API publique invitee) et pousse une notification ntfy.sh
+pour chaque nouvelle offre detectee.
 
 Configuration par variables d'environnement (secrets GitHub Actions) :
-  COMPANY_ID  - identifiant numerique LinkedIn de l'entreprise surveillee
+  COMPANY_ID  - une ou plusieurs entreprises separees par des virgules,
+                chacune sous la forme "id" ou "id=Nom affiche",
+                ex. "12345=Ma Boite,67890=Autre Agence"
   NTFY_TOPIC  - canal ntfy.sh ou envoyer les notifications
 """
 import datetime
@@ -13,6 +15,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 
 STATE_FILE = "etat.json"
@@ -46,41 +49,82 @@ def sauve(etat):
         f.write("\n")
 
 
+def parse_offres(page):
+    offres = {}
+    for m in re.finditer(
+            r'data-entity-urn="urn:li:jobPosting:(\d+)"[\s\S]*?'
+            r'base-search-card__title[^>]*>\s*([\s\S]*?)\s*</', page):
+        titre = htmllib.unescape(re.sub(r"\s+", " ", m.group(2)).strip())
+        offres.setdefault(m.group(1), titre)
+    return offres
+
+
 def main():
-    company = os.environ.get("COMPANY_ID", "").strip()
+    brut = os.environ.get("COMPANY_ID", "").strip()
     topic = os.environ.get("NTFY_TOPIC", "").strip()
-    if not company or not topic:
+    if not brut or not topic:
         print("ERREUR : secrets COMPANY_ID / NTFY_TOPIC manquants")
         return 1
 
-    premier = not os.path.exists(STATE_FILE)
-    etat = {"ids": [], "echecs": 0, "keepalive": ""}
-    if not premier:
+    societes = []
+    for morceau in brut.split(","):
+        morceau = morceau.strip()
+        if morceau:
+            cid, _, label = morceau.partition("=")
+            societes.append((cid.strip(), label.strip()))
+
+    etat = {"ids": [], "echecs": 0, "keepalive": "", "init": []}
+    if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
             etat.update(json.load(f))
 
-    url = ("https://www.linkedin.com/jobs-guest/jobs/api/"
-           "seeMoreJobPostings/search?f_C=" + company + "&start=0")
-    try:
-        page = http_get(url)
-    except Exception as e:
-        page = None
-        print("Echec de la requete :", e)
+    connus = set(etat["ids"])
+    echec = False
 
-    offres = {}
-    if page is not None:
-        for m in re.finditer(
-                r'data-entity-urn="urn:li:jobPosting:(\d+)"[\s\S]*?'
-                r'base-search-card__title[^>]*>\s*([\s\S]*?)\s*</', page):
-            titre = htmllib.unescape(re.sub(r"\s+", " ", m.group(2)).strip())
-            offres.setdefault(m.group(1), titre)
+    for rang, (cid, label) in enumerate(societes):
+        if rang:
+            time.sleep(3)  # courtoisie entre deux requetes LinkedIn
+        url = ("https://www.linkedin.com/jobs-guest/jobs/api/"
+               "seeMoreJobPostings/search?f_C=" + cid + "&start=0")
+        try:
+            page = http_get(url)
+        except Exception as e:
+            print("[%s] Echec de la requete : %s" % (cid, e))
+            echec = True
+            continue
+
+        offres = parse_offres(page)
         # reponse vide legitime de l'API = juste "<!DOCTYPE html>" + "<!---->"
         vide_legitime = re.fullmatch(r"\s*<!DOCTYPE html>\s*(<!---->)?\s*", page)
         if not offres and not vide_legitime:
-            print("Reponse suspecte (%d caracteres) - possible blocage" % len(page))
-            page = None
+            print("[%s] Reponse suspecte (%d caracteres) - possible blocage"
+                  % (cid, len(page)))
+            echec = True
+            continue
 
-    if page is None:
+        # premiere fois qu'on surveille cette entreprise :
+        # on memorise ses offres actuelles sans alerter
+        premiere_fois = cid not in etat["init"]
+        neuves = 0
+        for jid, titre in sorted(offres.items()):
+            if jid in connus:
+                continue
+            connus.add(jid)
+            neuves += 1
+            if premiere_fois:
+                continue
+            lien = "https://www.linkedin.com/jobs/view/" + jid
+            corps = ("%s : %s" % (label, titre)) if label else titre
+            print("[%s] NOUVELLE OFFRE : %s -> %s" % (cid, corps, lien))
+            notify(topic, "Nouvelle offre d'emploi !", corps, click=lien)
+        if premiere_fois:
+            etat["init"].append(cid)
+            print("[%s] Initialisation : %d offre(s) en ligne, pas d'alerte."
+                  % (cid, len(offres)))
+        elif not neuves:
+            print("[%s] RAS (%d offre(s) en ligne)." % (cid, len(offres)))
+
+    if echec:
         etat["echecs"] += 1
         print("Echecs consecutifs :", etat["echecs"])
         if etat["echecs"] == SEUIL_ALERTE_ECHECS:
@@ -88,25 +132,12 @@ def main():
                    "%d verifications consecutives ont echoue. "
                    "Voir les logs GitHub Actions." % etat["echecs"],
                    priority="default")
-        sauve(etat)
-        return 0
-
-    etat["echecs"] = 0
-    connus = set(etat["ids"])
-    nouvelles = [(i, t) for i, t in sorted(offres.items()) if i not in connus]
-
-    if premier:
-        print("Initialisation : %d offre(s) en ligne, pas d'alerte." % len(offres))
-    elif nouvelles:
-        for jid, titre in nouvelles:
-            lien = "https://www.linkedin.com/jobs/view/" + jid
-            print("NOUVELLE OFFRE :", titre, "->", lien)
-            notify(topic, "Nouvelle offre d'emploi !", titre, click=lien)
     else:
-        print("RAS (%d offre(s) en ligne)." % len(offres))
+        etat["echecs"] = 0
 
     # seuls les identifiants sont conserves (jamais les titres)
-    etat["ids"] = sorted(connus | set(offres), key=int)
+    etat["ids"] = sorted(connus, key=int)
+    etat["init"] = sorted(set(etat["init"]), key=int)
 
     # un commit par mois minimum pour que GitHub ne desactive pas
     # le planning apres 60 jours sans activite
