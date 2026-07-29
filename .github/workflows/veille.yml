@@ -1,9 +1,6 @@
 name: veille-offres
 
 on:
-  schedule:
-    # Toutes les 10 minutes, décalé à 03, 13, 23, 33, 43 et 53.
-    - cron: "3-59/10 * * * *"
   workflow_dispatch:
 
 permissions:
