@@ -2,12 +2,19 @@ name: veille-offres
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Forcer un contrôle immédiat"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
 concurrency:
   group: veille-offres
+  cancel-in-progress: false
 
 jobs:
   check:
@@ -15,20 +22,55 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Respect de la cadence de 10 minutes
+        id: cadence
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          minute=$(date -u +%M)
+          if [ "$FORCE" = "true" ] || [ $((10#$minute % 10)) -eq 0 ]; then
+            echo "executer=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "Contrôle ignoré : cadence de 10 minutes respectée."
+            echo "executer=non" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.cadence.outputs.executer == 'oui'
 
       - name: Vérification des offres
+        if: steps.cadence.outputs.executer == 'oui'
         env:
           COMPANY_ID: ${{ secrets.COMPANY_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python3 checker.py
 
       - name: Sauvegarde de l'état
+        if: always() && steps.cadence.outputs.executer == 'oui'
         run: |
           git add etat.json
           if ! git diff --cached --quiet; then
             git config user.name "veille-bot"
             git config user.email "veille-bot@users.noreply.github.com"
             git commit -m "maj etat"
-            git push
+            for tentative in 1 2 3; do
+              if git push origin HEAD:main; then
+                exit 0
+              fi
+
+              cp etat.json /tmp/etat-veille-local.json
+              git fetch origin main
+              git reset --hard origin/main
+              python3 fusionne_etat.py etat.json /tmp/etat-veille-local.json
+              git add etat.json
+
+              if git diff --cached --quiet; then
+                exit 0
+              fi
+
+              git commit -m "maj etat (fusion)"
+            done
+
+            echo "Impossible de sauvegarder l'état après 3 tentatives."
+            exit 1
           fi
