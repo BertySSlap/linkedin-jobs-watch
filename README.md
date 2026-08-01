@@ -6,10 +6,12 @@ notification push ntfy.sh cliquable.
 
 ## Fonctionnement
 
-- Exécution aux minutes **03, 13, 23, 33, 43 et 53** de chaque heure.
+- Contrôle effectif aux minutes **00, 10, 20, 30, 40 et 50** de chaque heure,
+  même si un déclencheur externe appelle le workflow plus fréquemment.
 - Aucun filtre de contrat : CDI, CDD, stage, alternance, apprentissage et autres.
 - Les erreurs apparaissent en rouge dans les journaux GitHub Actions.
-- La date UTC de la dernière vérification réussie est conservée dans `etat.json`.
+- La date UTC de la dernière vérification réussie est conservée une fois par
+  jour dans `etat.json`, afin d'éviter un commit à chaque contrôle.
 - Aucune alerte lors de la première surveillance d'une entreprise.
 
 ## Configuration
@@ -24,5 +26,6 @@ Deux secrets sont nécessaires dans **Settings → Secrets and variables → Act
 ## Fichiers
 
 - `checker.py` : vérificateur Python sans dépendance externe.
+- `fusionne_etat.py` : fusion de secours en cas de sauvegardes simultanées.
 - `etat.json` : mémoire des offres et état de fonctionnement.
 - `.github/workflows/veille.yml` : planification GitHub Actions.

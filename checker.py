@@ -173,11 +173,15 @@ def main():
             )
     else:
         etat["echecs"] = 0
-        etat["derniere_verification_reussie"] = (
+        maintenant = (
             datetime.datetime.now(datetime.timezone.utc)
             .replace(microsecond=0)
             .isoformat()
         )
+        # Une trace quotidienne suffit. Écrire l'heure à chaque passage
+        # créait un commit à chaque contrôle et des conflits Git.
+        if etat.get("derniere_verification_reussie", "")[:10] != maintenant[:10]:
+            etat["derniere_verification_reussie"] = maintenant
 
     etat["ids"] = sorted(connus, key=int)
     etat["init"] = sorted(set(etat["init"]), key=int)
@@ -187,7 +191,7 @@ def main():
         etat["keepalive"] = mois
 
     sauve(etat)
-    return 0
+    return 1 if echec else 0
 
 
 if __name__ == "__main__":
