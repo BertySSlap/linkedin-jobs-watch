@@ -1,31 +1,45 @@
-# Veille d'offres d'emploi LinkedIn
+# Veille LinkedIn : offres et publications
 
-Vérifie automatiquement les offres publiées par une ou plusieurs entreprises
-sur LinkedIn, via l'API publique invitée. Chaque nouvelle offre déclenche une
-notification push ntfy.sh cliquable.
+Le robot vérifie à la fois :
 
-## Fonctionnement
+- les offres officielles publiées dans LinkedIn Jobs ;
+- les publications publiques d'entreprises annonçant un recrutement.
 
-- Contrôle effectif aux minutes **00, 10, 20, 30, 40 et 50** de chaque heure,
-  même si un déclencheur externe appelle le workflow plus fréquemment.
-- Aucun filtre de contrat : CDI, CDD, stage, alternance, apprentissage et autres.
-- Les erreurs apparaissent en rouge dans les journaux GitHub Actions.
-- La date UTC de la dernière vérification réussie est conservée une fois par
-  jour dans `etat.json`, afin d'éviter un commit à chaque contrôle.
-- Aucune alerte lors de la première surveillance d'une entreprise.
+Chaque nouvelle détection déclenche une notification ntfy.sh cliquable. La
+première exécution pose seulement l'état initial afin de ne pas notifier toutes
+les anciennes offres et publications.
 
 ## Configuration
 
-Deux secrets sont nécessaires dans **Settings → Secrets and variables → Actions** :
+Variables utilisées par le programme :
 
-| Secret | Contenu |
+| Variable | Contenu |
 |---|---|
-| `COMPANY_ID` | Une ou plusieurs entreprises : `id=Nom,id=Autre nom` |
+| `COMPANY_ID` | Identifiants LinkedIn Jobs : `id=Nom,id=Autre nom` |
+| `COMPANY_POSTS` | Noms présents dans l'adresse LinkedIn : `vraiment-vraiment=Vraiment Vraiment` |
 | `NTFY_TOPIC` | Nom du canal ntfy.sh |
+| `SEUIL_ALERTE_ECHECS` | Facultatif, `6` par défaut |
+| `POST_KEYWORDS` | Facultatif, mots personnalisés séparés par des virgules |
 
-## Fichiers
+Il faut renseigner au moins `COMPANY_ID` ou `COMPANY_POSTS`. Pour surveiller les
+deux sources, renseigner les deux.
 
-- `checker.py` : vérificateur Python sans dépendance externe.
-- `fusionne_etat.py` : fusion de secours en cas de sauvegardes simultanées.
-- `etat.json` : mémoire des offres et état de fonctionnement.
-- `.github/workflows/veille.yml` : planification GitHub Actions.
+Exemple Termux dans `config.env` :
+
+```sh
+export COMPANY_ID='18245467=Vraiment Vraiment'
+export COMPANY_POSTS='vraiment-vraiment=Vraiment Vraiment'
+export NTFY_TOPIC='votre-topic-secret'
+export SEUIL_ALERTE_ECHECS='6'
+```
+
+La source des publications est la page publique française de l'entreprise. Le
+robot ne se connecte pas à un compte LinkedIn et ne demande aucun mot de passe.
+LinkedIn pouvant limiter les consultations répétées, un intervalle de dix
+minutes est recommandé.
+
+## Mémoire
+
+`etat.json` conserve séparément les identifiants des offres et ceux des
+publications. Une publication déjà analysée ne produit donc jamais deux alertes.
+
