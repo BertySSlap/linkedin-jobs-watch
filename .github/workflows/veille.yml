@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Forcer un contrôle immédiat"
+        description: "Ignorer l'intervalle normal, sans contourner une pause imposée par LinkedIn"
         required: false
         default: false
         type: boolean
@@ -22,31 +22,24 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Respect de la cadence de 10 minutes
-        id: cadence
-        env:
-          FORCE: ${{ inputs.force }}
-        run: |
-          minute=$(date -u +%M)
-          if [ "$FORCE" = "true" ] || [ $((10#$minute % 10)) -eq 0 ]; then
-            echo "executer=oui" >> "$GITHUB_OUTPUT"
-          else
-            echo "Contrôle ignoré : cadence de 10 minutes respectée."
-            echo "executer=non" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/checkout@v4
-        if: steps.cadence.outputs.executer == 'oui'
+      - name: Charger le dernier code et l'état de main
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Vérification des offres
-        if: steps.cadence.outputs.executer == 'oui'
         env:
           COMPANY_ID: ${{ secrets.COMPANY_ID }}
+          COMPANY_POSTS: ${{ secrets.COMPANY_POSTS }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          INTERVALLE_CONTROLE_MINUTES: '10'
+          SEUIL_ALERTE_ECHECS: '6'
+          FORCE_CHECK: ${{ inputs.force }}
         run: python3 checker.py
 
       - name: Sauvegarde de l'état
-        if: always() && steps.cadence.outputs.executer == 'oui'
+        if: always() && steps.checkout.outcome == 'success'
         run: |
           git add etat.json
           if ! git diff --cached --quiet; then
@@ -57,11 +50,15 @@ jobs:
               if git push origin HEAD:main; then
                 exit 0
               fi
+              if [ "$tentative" -eq 3 ]; then
+                break
+              fi
 
-              cp etat.json /tmp/etat-veille-local.json
+              etat_a_fusionner="$RUNNER_TEMP/etat-veille-local.json"
+              cp etat.json "$etat_a_fusionner"
               git fetch origin main
               git reset --hard origin/main
-              python3 fusionne_etat.py etat.json /tmp/etat-veille-local.json
+              python3 fusionne_etat.py etat.json "$etat_a_fusionner"
               git add etat.json
 
               if git diff --cached --quiet; then
@@ -74,3 +71,4 @@ jobs:
             echo "Impossible de sauvegarder l'état après 3 tentatives."
             exit 1
           fi
+

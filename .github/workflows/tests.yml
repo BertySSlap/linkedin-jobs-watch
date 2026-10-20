@@ -1,0 +1,34 @@
+name: tests
+
+on:
+  push:
+    paths:
+      - 'checker.py'
+      - 'fusionne_etat.py'
+      - 'tests/**'
+      - '.github/workflows/veille.yml'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    paths:
+      - 'checker.py'
+      - 'fusionne_etat.py'
+      - 'tests/**'
+      - '.github/workflows/veille.yml'
+      - '.github/workflows/tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests unitaires sans réseau ni secrets
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
