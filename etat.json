@@ -1,8 +1,8 @@
 {
-  "dernier_statut": "differe",
-  "derniere_tentative": "2026-10-28T08:02:23+00:00",
-  "derniere_verification_reussie": "2026-10-28T07:52:23+00:00",
-  "echecs": 1,
+  "dernier_statut": "succes",
+  "derniere_tentative": "2026-10-28T08:34:22+00:00",
+  "derniere_verification_reussie": "2026-10-28T08:34:22+00:00",
+  "echecs": 0,
   "ids": [
     "4303976207",
     "4348297375",
@@ -19,14 +19,8 @@
     "18245467"
   ],
   "keepalive": "2026-10",
-  "limitation": {
-    "alerte_envoyee": false,
-    "depuis": "2026-10-28T08:02:24+00:00",
-    "derniere": "2026-10-28T08:02:24+00:00",
-    "reprise_apres": "2026-10-28T08:32:24+00:00",
-    "tentatives": 1
-  },
+  "limitation": {},
   "post_ids": [],
   "posts_init": [],
-  "prochain_controle": "2026-10-28T08:32:24+00:00"
+  "prochain_controle": "2026-10-28T08:44:22+00:00"
 }
